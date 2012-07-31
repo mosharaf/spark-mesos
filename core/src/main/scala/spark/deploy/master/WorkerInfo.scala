@@ -19,6 +19,9 @@ class WorkerInfo(
   def coresFree: Int = cores - coresUsed
   def memoryFree: Int = memory - memoryUsed
 
+  var rxBps = 0.0
+  var txBps = 0.0
+
   def addExecutor(exec: ExecutorInfo) {
     executors(exec.fullId) = exec
     coresUsed += exec.cores
@@ -31,5 +34,10 @@ class WorkerInfo(
       coresUsed -= exec.cores
       memoryUsed -= exec.memory
     }
+  }
+  
+  def updateNetworkLoad(newRxBps: Double, newTxBps: Double) {
+    rxBps = newRxBps
+    txBps = newTxBps
   }
 }

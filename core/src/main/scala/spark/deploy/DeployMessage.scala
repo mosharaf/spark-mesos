@@ -9,6 +9,9 @@ sealed trait DeployMessage extends Serializable
 case class RegisterWorker(id: String, host: String, port: Int, cores: Int, memory: Int)
   extends DeployMessage
 
+case class UpdateNetworkLoad(id: String, rxBps: Double, txBps: Double)
+  extends DeployMessage
+
 case class ExecutorStateChanged(
     jobId: String,
     execId: Int,

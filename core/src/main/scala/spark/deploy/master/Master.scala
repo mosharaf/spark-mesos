@@ -13,6 +13,7 @@ import akka.remote.RemoteClientShutdown
 import akka.remote.RemoteClientDisconnected
 import spark.deploy.RegisterWorker
 import spark.deploy.RegisterWorkerFailed
+import spark.deploy.UpdateNetworkLoad
 import akka.actor.Terminated
 
 class Master(ip: String, port: Int, webUiPort: Int) extends Actor with Logging {
@@ -111,6 +112,15 @@ class Master(ip: String, port: Int, webUiPort: Int) extends Actor with Logging {
       // The disconnected client could've been either a worker or a job; remove whichever it was
       addressToWorker.get(address).foreach(removeWorker)
       addressToJob.get(address).foreach(removeJob)
+    }
+    
+    case UpdateNetworkLoad(id, rxBps, txBps) => {
+      // Update network statistics
+      if (idToWorker.contains(id)) {
+        val worker = idToWorker(id)
+        worker.updateNetworkLoad(rxBps, txBps)
+        logInfo("Worker " + id + " at " + worker.host + " has RxBps=" + rxBps + " and TxBps=" + txBps)
+      }
     }
   }
 

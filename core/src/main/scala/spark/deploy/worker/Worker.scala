@@ -13,11 +13,20 @@ import akka.remote.RemoteClientDisconnected
 import spark.deploy.RegisterWorker
 import spark.deploy.LaunchExecutor
 import spark.deploy.RegisterWorkerFailed
+import spark.deploy.UpdateNetworkLoad
 import akka.actor.Terminated
-import java.io.File
+import java.io.{File, InputStreamReader, BufferedReader}
 
 class Worker(ip: String, port: Int, webUiPort: Int, cores: Int, memory: Int, masterUrl: String)
   extends Actor with Logging {
+
+  val commandToGetRxBytes = System.getProperty("spark.command.getRxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $7}'")
+  val commandToGetTxBytes = System.getProperty("spark.command.getTxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $10}'")
+
+  var lastRxBytes = getValueFromCommandLine(commandToGetRxBytes).toDouble
+  var lastTxBytes = getValueFromCommandLine(commandToGetTxBytes).toDouble
+  var lastTimeRxCalcMillis = System.currentTimeMillis
+  var lastTimeTxCalcMillis = lastTimeRxCalcMillis
 
   val DATE_FORMAT = new SimpleDateFormat("yyyyMMddHHmmss")  // For worker and executor IDs
   val MASTER_REGEX = "spark://([^:]+):([0-9]+)".r
@@ -35,6 +44,53 @@ class Worker(ip: String, port: Int, webUiPort: Int, cores: Int, memory: Int, mas
   def coresFree: Int = cores - coresUsed
   def memoryFree: Int = memory - memoryUsed
 
+  def getRxBps(): Double = {
+    val curTime = System.currentTimeMillis
+    val secondsElapsed = (curTime - lastTimeRxCalcMillis) / 1000.0
+    lastTimeRxCalcMillis = curTime
+    val curRxBytes = getValueFromCommandLine(commandToGetRxBytes).toDouble
+    val rxBps = (curRxBytes - lastRxBytes) / secondsElapsed
+    lastRxBytes = curRxBytes
+    rxBps
+  }
+
+  def getTxBps(): Double = {
+    val curTime = System.currentTimeMillis
+    val secondsElapsed = (curTime - lastTimeTxCalcMillis) / 1000.0
+    lastTimeTxCalcMillis = curTime
+    val curTxBytes = getValueFromCommandLine(commandToGetTxBytes).toDouble
+    val txBps = (curTxBytes - lastTxBytes) / secondsElapsed
+    lastTxBytes = curTxBytes;
+    txBps
+  }
+
+  def getValueFromCommandLine(commandToRun: String): String = {
+    var retVal:String = null
+    try {
+      val pb = new java.lang.ProcessBuilder("/bin/sh", "-c", commandToRun)
+      val p = pb.start()
+      val stdInput = new BufferedReader(new InputStreamReader(p.getInputStream()))
+      retVal = stdInput.readLine()
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+    }
+    retVal
+  }
+
+  def startNetworkUpdater() {
+    val t = new Thread {
+      override def run() {
+        while (true) {
+          Thread.sleep(1000)
+          master ! UpdateNetworkLoad(workerId, getRxBps(), getTxBps())
+        }
+      }
+    }
+    t.setDaemon(true)
+    t.start()
+  }
+  
   def createWorkDir() {
     workDir = new File(sparkHome, "work")
     try {
