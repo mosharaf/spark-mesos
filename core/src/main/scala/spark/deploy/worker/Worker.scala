@@ -20,8 +20,10 @@ import java.io.{File, InputStreamReader, BufferedReader}
 class Worker(ip: String, port: Int, webUiPort: Int, cores: Int, memory: Int, masterUrl: String)
   extends Actor with Logging {
 
-  val commandToGetRxBytes = System.getProperty("spark.command.getRxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $7}'")
-  val commandToGetTxBytes = System.getProperty("spark.command.getTxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $10}'")
+  // val commandToGetRxBytes = System.getProperty("spark.command.getRxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $7}'")
+  val commandToGetRxBytes = System.getProperty("spark.command.getRxBytes", "ifconfig eth0 | grep \"RX bytes\" | cut -d: -f2 | awk '{ print $1 }'")
+  // val commandToGetTxBytes = System.getProperty("spark.command.getTxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $10}'")
+  val commandToGetTxBytes = System.getProperty("spark.command.getTxBytes", "ifconfig eth0 | grep \"TX bytes\" | cut -d: -f3 | awk '{ print $1 }'")
 
   var lastRxBytes = getValueFromCommandLine(commandToGetRxBytes).toDouble
   var lastTxBytes = getValueFromCommandLine(commandToGetTxBytes).toDouble
@@ -113,6 +115,7 @@ class Worker(ip: String, port: Int, webUiPort: Int, cores: Int, memory: Int, mas
     logInfo("Spark home: " + sparkHome)
     createWorkDir()
     connectToMaster()
+    startNetworkUpdater()
     startWebUi()
   }
 
