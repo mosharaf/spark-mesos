@@ -9,6 +9,7 @@ import scala.collection.mutable.{ListBuffer, Map, Set}
 import scala.math
 
 import spark._
+import spark.storage.StorageLevel
 
 class BitTorrentBroadcast[T](@transient var value_ : T, isLocal: Boolean)
 extends Broadcast[T] with Logging with Serializable {
@@ -16,7 +17,7 @@ extends Broadcast[T] with Logging with Serializable {
   def value = value_
 
   Broadcast.synchronized {
-    Broadcast.values.put(uuid, 0, value_)
+    Broadcast.values.putSingle(uuid.toString, value_, StorageLevel.MEMORY_ONLY, false)
   }
 
   @transient var arrayOfBlocks: Array[BroadcastBlock] = null
@@ -111,35 +112,34 @@ extends Broadcast[T] with Logging with Serializable {
   private def readObject(in: ObjectInputStream) {
     in.defaultReadObject()
     Broadcast.synchronized {
-      val cachedVal = Broadcast.values.get(uuid, 0)
+      SparkEnv.get.blockManager.getSingle(uuid.toString) match {
+        case Some(x) => x.asInstanceOf[T]
+        case None => {
+          // Initializing everything because Master will only send null/0 values
+          // Only the 1st worker in a node can be here. Others will get from cache
+          initializeWorkerVariables
 
-      if (cachedVal != null) {
-        value_ = cachedVal.asInstanceOf[T]
-      } else {
-        // Initializing everything because Master will only send null/0 values
-        // Only the 1st worker in a node can be here. Others will get from cache
-        initializeWorkerVariables
+          logInfo("Local host address: " + hostAddress)
 
-        logInfo("Local host address: " + hostAddress)
+          // Start local ServeMultipleRequests thread first
+          serveMR = new ServeMultipleRequests
+          serveMR.setDaemon(true)
+          serveMR.start()
+          logInfo("ServeMultipleRequests started...")
 
-        // Start local ServeMultipleRequests thread first
-        serveMR = new ServeMultipleRequests
-        serveMR.setDaemon(true)
-        serveMR.start()
-        logInfo("ServeMultipleRequests started...")
+          val start = System.nanoTime
 
-        val start = System.nanoTime
+          val receptionSucceeded = receiveBroadcast(uuid)
+          if (receptionSucceeded) {
+            value_ = MultiTracker.unBlockifyObject[T](arrayOfBlocks, totalBytes, totalBlocks)
+            Broadcast.values.putSingle(uuid.toString, value_, StorageLevel.MEMORY_ONLY, false)
+          }  else {
+            logError("Reading Broadcasted variable " + uuid + " failed")
+          }
 
-        val receptionSucceeded = receiveBroadcast(uuid)
-        if (receptionSucceeded) {
-          value_ = MultiTracker.unBlockifyObject[T](arrayOfBlocks, totalBytes, totalBlocks)
-          Broadcast.values.put(uuid, 0, value_)
-        }  else {
-          logError("Reading Broadcasted variable " + uuid + " failed")
+          val time = (System.nanoTime - start) / 1e9
+          logInfo("Reading Broadcasted variable " + uuid + " took " + time + " s")
         }
-
-        val time = (System.nanoTime - start) / 1e9
-        logInfo("Reading Broadcasted variable " + uuid + " took " + time + " s")
       }
     }
   }

@@ -34,11 +34,12 @@ class Worker(ip: String, port: Int, webUiPort: Int, cores: Int, memory: Int, mas
   val MASTER_REGEX = "spark://([^:]+):([0-9]+)".r
 
   var master: ActorRef = null
+  var masterWebUiUrl : String = ""
   val workerId = generateWorkerId()
   var sparkHome: File = null
   var workDir: File = null
   val executors = new HashMap[String, ExecutorRunner]
-  val finishedExecutors = new ArrayBuffer[String]
+  val finishedExecutors = new HashMap[String, ExecutorRunner]
 
   var coresUsed = 0
   var memoryUsed = 0
@@ -126,7 +127,7 @@ class Worker(ip: String, port: Int, webUiPort: Int, cores: Int, memory: Int, mas
         val akkaUrl = "akka://spark@%s:%s/user/Master".format(masterHost, masterPort)
         try {
           master = context.actorFor(akkaUrl)
-          master ! RegisterWorker(workerId, ip, port, cores, memory)
+          master ! RegisterWorker(workerId, ip, port, cores, memory, webUiPort)
           context.system.eventStream.subscribe(self, classOf[RemoteClientLifeCycleEvent])
           context.watch(master) // Doesn't work with remote actors, but useful for testing
         } catch {
@@ -154,7 +155,8 @@ class Worker(ip: String, port: Int, webUiPort: Int, cores: Int, memory: Int, mas
   }
 
   override def receive = {
-    case RegisteredWorker =>
+    case RegisteredWorker(url) =>
+      masterWebUiUrl = url
       logInfo("Successfully registered with master")
 
     case RegisterWorkerFailed(message) =>
@@ -167,25 +169,36 @@ class Worker(ip: String, port: Int, webUiPort: Int, cores: Int, memory: Int, mas
         jobId, execId, jobDesc, cores_, memory_, self, workerId, ip, sparkHome, workDir)
       executors(jobId + "/" + execId) = manager
       manager.start()
+      coresUsed += cores_
+      memoryUsed += memory_
       master ! ExecutorStateChanged(jobId, execId, ExecutorState.LOADING, None)
 
     case ExecutorStateChanged(jobId, execId, state, message) =>
       master ! ExecutorStateChanged(jobId, execId, state, message)
+      val fullId = jobId + "/" + execId
       if (ExecutorState.isFinished(state)) {
-        logInfo("Executor " + jobId + "/" + execId + " finished with state " + state)
-        executors -= jobId + "/" + execId
-        finishedExecutors += jobId + "/" + execId
+        val executor = executors(fullId)
+        logInfo("Executor " + fullId + " finished with state " + state)
+        finishedExecutors(fullId) = executor
+        executors -= fullId
+        coresUsed -= executor.cores
+        memoryUsed -= executor.memory
       }
 
     case KillExecutor(jobId, execId) =>
       val fullId = jobId + "/" + execId
+      val executor = executors(fullId)
       logInfo("Asked to kill executor " + fullId)
-      executors(jobId + "/" + execId).kill()
-      executors -= fullId
-      finishedExecutors += fullId
+      executor.kill()
 
     case Terminated(_) | RemoteClientDisconnected(_, _) | RemoteClientShutdown(_, _) =>
       masterDisconnected()
+      
+    case RequestWorkerState => {
+      sender ! WorkerState(ip + ":" + port, workerId, executors.values.toList, 
+        finishedExecutors.values.toList, masterUrl, cores, memory, 
+        coresUsed, memoryUsed, masterWebUiUrl)
+    }
   }
 
   def masterDisconnected() {

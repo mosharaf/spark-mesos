@@ -52,15 +52,15 @@ class Master(ip: String, port: Int, webUiPort: Int) extends Actor with Logging {
   }
 
   override def receive = {
-    case RegisterWorker(id, host, workerPort, cores, memory) => {
+    case RegisterWorker(id, host, workerPort, cores, memory, worker_webUiPort) => {
       logInfo("Registering worker %s:%d with %d cores, %s RAM".format(
         host, workerPort, cores, Utils.memoryMegabytesToString(memory)))
       if (idToWorker.contains(id)) {
         sender ! RegisterWorkerFailed("Duplicate worker ID")
       } else {
-        addWorker(id, host, workerPort, cores, memory)
+        addWorker(id, host, workerPort, cores, memory, worker_webUiPort)
         context.watch(sender)  // This doesn't work with remote actors but helps for testing
-        sender ! RegisteredWorker
+        sender ! RegisteredWorker("http://" + ip + ":" + webUiPort)
         schedule()
       }
     }
@@ -114,12 +114,16 @@ class Master(ip: String, port: Int, webUiPort: Int) extends Actor with Logging {
       addressToJob.get(address).foreach(removeJob)
     }
     
+    case RequestMasterState => {
+      sender ! MasterState(ip + ":" + port, workers.toList, jobs.toList, completedJobs.toList)
+    }
+    
     case UpdateNetworkLoad(id, rxBps, txBps) => {
       // Update network statistics
       if (idToWorker.contains(id)) {
         val worker = idToWorker(id)
         worker.updateNetworkLoad(rxBps, txBps)
-        logInfo("Worker " + id + " at " + worker.host + " has RxBps=" + rxBps + " and TxBps=" + txBps)
+        // logInfo("Worker " + id + " at " + worker.host + " has RxBps=" + rxBps + " and TxBps=" + txBps)
       }
     }
   }
@@ -141,6 +145,7 @@ class Master(ip: String, port: Int, webUiPort: Int) extends Actor with Logging {
         }
         if (job.coresLeft == 0) {
           waitingJobs -= job
+          job.state = JobState.RUNNING
         }
       }
     }
@@ -153,8 +158,8 @@ class Master(ip: String, port: Int, webUiPort: Int) extends Actor with Logging {
     exec.job.actor ! ExecutorAdded(exec.id, worker.id, worker.host, exec.cores, exec.memory)
   }
 
-  def addWorker(id: String, host: String, port: Int, cores: Int, memory: Int): WorkerInfo = {
-    val worker = new WorkerInfo(id, host, port, cores, memory, sender)
+  def addWorker(id: String, host: String, port: Int, cores: Int, memory: Int, webUiPort: Int): WorkerInfo = {
+    val worker = new WorkerInfo(id, host, port, cores, memory, sender, webUiPort)
     workers += worker
     idToWorker(worker.id) = worker
     actorToWorker(sender) = worker
@@ -196,6 +201,7 @@ class Master(ip: String, port: Int, webUiPort: Int) extends Actor with Logging {
       exec.worker.removeExecutor(exec)
       exec.worker.actor ! KillExecutor(exec.job.id, exec.id)
     }
+    job.state = JobState.FINISHED
     schedule()
   }
 
