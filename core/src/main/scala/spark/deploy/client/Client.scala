@@ -59,10 +59,10 @@ class Client(
         jobId = jobId_
         listener.connected(jobId)
 
-      case ExecutorAdded(id: Int, workerId: String, host: String, cores: Int, memory: Int) =>
+      case ExecutorAdded(id: Int, workerId: String, host: String, curRxBps: Double, curTxBps: Double, cores: Int, memory: Int) =>
         val fullId = jobId + "/" + id
-        logInfo("Executor added: %s on %s (%s) with %d cores".format(fullId, workerId, host, cores))
-        listener.executorAdded(fullId, workerId, host, cores, memory)
+        logInfo("Executor added: %s on %s (%s) with %d cores. CurRxBps=%f | CurTxBps=%f".format(fullId, workerId, host, cores, curRxBps, curTxBps))
+        listener.executorAdded(fullId, workerId, host, curRxBps, curTxBps, cores, memory)
 
       case ExecutorUpdated(id, state, message) =>
         val fullId = jobId + "/" + id

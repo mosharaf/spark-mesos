@@ -25,22 +25,29 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
     val slaveActor = new HashMap[String, ActorRef]
     val slaveHost = new HashMap[String, String]
     val freeCores = new HashMap[String, Int]
+    val rxBps = new HashMap[String, Double]
+    val txBps = new HashMap[String, Double]
 
     def receive = {
-      case RegisterSlave(slaveId, host, cores) =>
+      case RegisterSlave(slaveId, host, cores, curRxBps, curTxBps) =>
         if (slaveActor.contains(slaveId)) {
           sender ! RegisterSlaveFailed("Duplicate slave ID: " + slaveId)
         } else {
-          logInfo("Registered slave: " + sender + " with ID " + slaveId)
+          logInfo("Registered slave: " + sender + " with ID " + slaveId + " CurRxBps = " + curRxBps + " CurTxBps = " + curTxBps)
           sender ! RegisteredSlave(sparkProperties)
           slaveActor(slaveId) = sender
           slaveHost(slaveId) = host
           freeCores(slaveId) = cores
+          rxBps(slaveId) = curRxBps
+          txBps(slaveId) = curTxBps
           totalCoreCount.addAndGet(cores)
           makeOffers()
         }
 
-      case StatusUpdate(slaveId, taskId, state, data) =>
+      case StatusUpdate(slaveId, taskId, state, data, curRxBps, curTxBps) =>
+        logInfo("Slave: " + sender + " with ID " + slaveId + " CurRxBps = " + curRxBps + " CurTxBps = " + curTxBps)
+        rxBps(slaveId) = curRxBps
+        txBps(slaveId) = curTxBps
         scheduler.statusUpdate(taskId, state, data.value)
         if (TaskState.isFinished(state)) {
           freeCores(slaveId) += 1
@@ -60,13 +67,13 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
     // Make fake resource offers on all slaves
     def makeOffers() {
       launchTasks(scheduler.resourceOffers(
-        slaveHost.toArray.map {case (id, host) => new WorkerOffer(id, host, freeCores(id))}))
+        slaveHost.toArray.map {case (id, host) => new WorkerOffer(id, host, freeCores(id), rxBps(id), txBps(id))}))
     }
 
     // Make fake resource offers on just one slave
     def makeOffers(slaveId: String) {
       launchTasks(scheduler.resourceOffers(
-        Seq(new WorkerOffer(slaveId, slaveHost(slaveId), freeCores(slaveId)))))
+        Seq(new WorkerOffer(slaveId, slaveHost(slaveId), freeCores(slaveId), rxBps(slaveId), txBps(slaveId)))))
     }
 
     // Launch tasks returned by a set of resource offers

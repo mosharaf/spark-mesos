@@ -155,7 +155,7 @@ class Master(ip: String, port: Int, webUiPort: Int) extends Actor with Logging {
     logInfo("Launching executor " + exec.fullId + " on worker " + worker.id)
     worker.addExecutor(exec)
     worker.actor ! LaunchExecutor(exec.job.id, exec.id, exec.job.desc, exec.cores, exec.memory)
-    exec.job.actor ! ExecutorAdded(exec.id, worker.id, worker.host, exec.cores, exec.memory)
+    exec.job.actor ! ExecutorAdded(exec.id, worker.id, worker.host, worker.rxBps, worker.txBps, exec.cores, exec.memory)
   }
 
   def addWorker(id: String, host: String, port: Int, cores: Int, memory: Int, webUiPort: Int): WorkerInfo = {

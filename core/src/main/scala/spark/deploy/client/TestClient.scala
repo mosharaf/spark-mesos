@@ -16,7 +16,7 @@ object TestClient {
       System.exit(0)
     }
 
-    def executorAdded(id: String, workerId: String, host: String, cores: Int, memory: Int) {}
+    def executorAdded(id: String, workerId: String, host: String, curRxBps: Double, curTxBps: Double, cores: Int, memory: Int) {}
 
     def executorRemoved(id: String, message: String) {}
   }

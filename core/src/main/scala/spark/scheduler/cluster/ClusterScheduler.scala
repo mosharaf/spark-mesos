@@ -108,13 +108,32 @@ class ClusterScheduler(sc: SparkContext)
     }
   }
 
+  def orderOffersByTxBps(offers: Seq[WorkerOffer]): Seq[WorkerOffer] = {
+    // Group by hostname and sort descending by curTxBps
+    val grouped = offers.groupBy(_.hostname).map(_._2).toList.sortWith(_(0).curTxBps > _(0).curTxBps)
+    // Find the length of the largest group
+    var maxGroupLen = grouped.maxBy(_.size).size
+    // Order offers
+    var retVal = new ArrayBuffer[WorkerOffer]
+    for (i <- 0 until maxGroupLen) {
+      for (g <- grouped) {
+        if (g.size > i) {
+          retVal += g(i)
+        }
+      }
+    }
+    retVal
+  }
+
   /**
    * Called by cluster manager to offer resources on slaves. We respond by asking our active task
    * sets for tasks in order of priority. We fill each node with tasks in a round-robin manner so
    * that tasks are balanced across the cluster.
    */
-  def resourceOffers(offers: Seq[WorkerOffer]): Seq[Seq[TaskDescription]] = {
+  def resourceOffers(origOffers: Seq[WorkerOffer]): Seq[Seq[TaskDescription]] = {
     synchronized {
+      val offers = orderOffersByTxBps(origOffers)
+      
       // Mark each slave as alive and remember its hostname
       for (o <- offers) {
         slaveIdToHost(o.slaveId) = o.hostname

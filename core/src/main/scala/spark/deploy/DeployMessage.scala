@@ -46,7 +46,7 @@ case class RegisterJob(jobDescription: JobDescription) extends DeployMessage
 // Master to Client
 
 case class RegisteredJob(jobId: String) extends DeployMessage
-case class ExecutorAdded(id: Int, workerId: String, host: String, cores: Int, memory: Int)
+case class ExecutorAdded(id: Int, workerId: String, host: String, curRxBps: Double, curTxBps: Double, cores: Int, memory: Int)
 case class ExecutorUpdated(id: Int, state: ExecutorState, message: Option[String])
 case class JobKilled(message: String)
 

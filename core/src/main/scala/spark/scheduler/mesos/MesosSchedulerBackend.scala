@@ -181,7 +181,9 @@ class MesosSchedulerBackend(
         offerableWorkers += new WorkerOffer(
           offer.getSlaveId.getValue,
           offer.getHostname,
-          getResource(offer.getResourcesList, "cpus").toInt)
+          getResource(offer.getResourcesList, "cpus").toInt,
+          -1.0,
+          -1.0)
       }
 
       // Call into the ClusterScheduler
