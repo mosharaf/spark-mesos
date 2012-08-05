@@ -109,6 +109,9 @@ class ClusterScheduler(sc: SparkContext)
   }
 
   def orderOffersByTxBps(offers: Seq[WorkerOffer]): Seq[WorkerOffer] = {
+    if (offers.size == 0)
+      return offers
+
     // Group by hostname and sort descending by curTxBps
     val grouped = offers.groupBy(_.hostname).map(_._2).toList.sortWith(_(0).curTxBps > _(0).curTxBps)
     // Find the length of the largest group
