@@ -84,6 +84,11 @@ case class RemoveHost(host: String) extends ToBlockManagerMaster
 
 case object StopBlockManagerMaster extends ToBlockManagerMaster
 
+case class UpdateNetworkLoad(
+    blockManagerId: BlockManagerId, 
+    newRxBps: Double, 
+    newTxBps: Double) 
+  extends ToBlockManagerMaster
 
 class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
   
@@ -91,6 +96,8 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       timeMs: Long,
       maxMem: Long,
       maxDisk: Long) {
+    var curRxBps = 0.0
+    var curTxBps = 0.0
     private var lastSeenMs = timeMs
     private var remainedMem = maxMem
     private var remainedDisk = maxDisk
@@ -98,6 +105,11 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
     
     def updateLastSeenMs() {
       lastSeenMs = System.currentTimeMillis() / 1000
+    }
+
+    def updateNetworkLoad(newRxBps: Double, newTxBps: Double) {
+      curRxBps = newRxBps
+      curTxBps = newTxBps
     }
     
     def addBlock(blockId: String, storageLevel: StorageLevel, deserializedSize: Long, size: Long) =
@@ -184,8 +196,9 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       getLocationsMultipleBlockIds(blockIds)
 
     case GetPeers(blockManagerId, size) =>
-      getPeersDeterministic(blockManagerId, size)
-      /*getPeers(blockManagerId, size)*/
+      getPeersOrderedByRxBps(blockManagerId, size)
+      // getPeersDeterministic(blockManagerId, size)
+      // getPeers(blockManagerId, size)
       
     case RemoveHost(host) =>
       removeHost(host)
@@ -195,6 +208,9 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       logInfo("Stopping BlockManagerMaster")
       sender ! true
       context.stop(self)
+
+    case UpdateNetworkLoad(blockManagerId, curRxBps, curTxBps) =>
+      updateNetworkLoad(blockManagerId, curRxBps, curTxBps)
 
     case other => 
       logInfo("Got unknown message: " + other)
@@ -326,6 +342,35 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       res += peers(index % peers.size)
     }
     sender ! res.toSeq
+  }
+  
+  private def getPeersOrderedByRxBps(blockManagerId: BlockManagerId, size: Int) {
+    var peers: Array[BlockManagerId] = blockManagerInfo.keySet.toArray.sortWith(blockManagerInfo(_).curRxBps < blockManagerInfo(_).curRxBps)
+    var res: ArrayBuffer[BlockManagerId] = new ArrayBuffer[BlockManagerId]
+
+    var index = 0
+    // NOT throwing exception if we do not have enough places to replicate to
+    while (res.size < size && index < peers.size) {
+      res += peers(index)
+      index += 1
+    }
+    sender ! res.toSeq
+  }
+  
+  private def updateNetworkLoad(
+      blockManagerId: BlockManagerId, 
+      curRxBps: Double, 
+      curTxBps: Double) {
+    
+    if (blockManagerId.ip == Utils.localHostName() && !isLocal) {
+      // Ignore if its the Master
+      logInfo("Ignoring updateNetworkLoad for " + blockManagerId + ". It's the Master itself.")
+    } else {
+      logInfo("updateNetworkLoad for " + blockManagerId + ". CurRxBps=" + curRxBps + " | CurTxBps=" + curTxBps)
+      blockManagerInfo(blockManagerId).updateLastSeenMs()
+      blockManagerInfo(blockManagerId).updateNetworkLoad(curRxBps, curTxBps)
+    }
+    sender ! true
   }
 }
 
@@ -531,6 +576,23 @@ class BlockManagerMaster(actorSystem: ActorSystem, isMaster: Boolean, isLocal: B
       case e: Exception =>
         logError("GetPeers failed", e)
         return null
+    }
+  }
+  
+  def syncUpdateNetworkLoad(msg: UpdateNetworkLoad): Boolean = {
+    val startTimeMs = System.currentTimeMillis()
+    val tmp = " msg " + msg + " "
+    logDebug("Got in syncUpdateNetworkLoad " + tmp + " 0 " + Utils.getUsedTimeMs(startTimeMs))
+    
+    try {
+      communicate(msg)
+      logDebug("UpdateNetworkLoad sent successfully")
+      logDebug("Got in syncUpdateNetworkLoad 1 " + tmp + " 1 " + Utils.getUsedTimeMs(startTimeMs))
+      return true
+    } catch {
+      case e: Exception =>
+        logError("Failed in syncUpdateNetworkLoad", e)
+        return false
     }
   }
 }

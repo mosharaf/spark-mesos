@@ -65,7 +65,22 @@ class BlockLocker(numLockers: Int) {
 
 class BlockManager(val master: BlockManagerMaster, val serializer: Serializer, maxMemory: Long)
   extends Logging {
+    
+  val BANDWIDTH_INTERVAL = System.getProperty("spark.bandwidth.interval", "100").toLong
 
+  val commandToGetRxBytes = System.getProperty("spark.command.getRxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $7}'")
+  // val commandToGetRxBytes = System.getProperty("spark.command.getRxBytes", "ifconfig eth0 | grep \"RX bytes\" | cut -d: -f2 | awk '{ print $1 }'")
+  val commandToGetTxBytes = System.getProperty("spark.command.getTxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $10}'")
+  // val commandToGetTxBytes = System.getProperty("spark.command.getTxBytes", "ifconfig eth0 | grep \"TX bytes\" | cut -d: -f3 | awk '{ print $1 }'")
+
+  var lastRxBps = -1.0
+  var lastRxBytes = getValueFromCommandLine(commandToGetRxBytes).toDouble
+  var lastTimeRxCalcMillis = System.currentTimeMillis
+
+  var lastTxBps = -1.0
+  var lastTxBytes = getValueFromCommandLine(commandToGetTxBytes).toDouble
+  var lastTimeTxCalcMillis = lastTimeRxCalcMillis
+  
   case class BlockInfo(level: StorageLevel, tellMaster: Boolean)
 
   private val NUM_LOCKS = 337
@@ -104,6 +119,68 @@ class BlockManager(val master: BlockManagerMaster, val serializer: Serializer, m
     master.mustRegisterBlockManager(
       RegisterBlockManager(blockManagerId, maxMemory, maxMemory))
     BlockManagerWorker.startBlockManagerWorker(this)
+    startNetworkUpdater()
+  }
+
+  private def getRxBps(): Double = synchronized {
+    val curTime = System.currentTimeMillis
+    val millisElapsed = curTime - lastTimeRxCalcMillis
+    if (millisElapsed < BANDWIDTH_INTERVAL && lastRxBps >= 0.0) {
+      return lastRxBps
+    }
+    val secondsElapsed = millisElapsed / 1000.0
+    lastTimeRxCalcMillis = curTime
+    val curRxBytes = getValueFromCommandLine(commandToGetRxBytes).toDouble
+    val rxBps = (curRxBytes - lastRxBytes) / secondsElapsed
+    lastRxBytes = curRxBytes
+    lastRxBps = rxBps
+    rxBps
+  }
+
+  private def getTxBps(): Double = synchronized {
+    val curTime = System.currentTimeMillis
+    val millisElapsed = curTime - lastTimeTxCalcMillis
+    if (millisElapsed < BANDWIDTH_INTERVAL && lastTxBps >= 0.0) {
+      return lastTxBps
+    }
+    val secondsElapsed = millisElapsed / 1000.0
+    lastTimeTxCalcMillis = curTime
+    val curTxBytes = getValueFromCommandLine(commandToGetTxBytes).toDouble
+    val txBps = (curTxBytes - lastTxBytes) / secondsElapsed
+    lastTxBytes = curTxBytes
+    lastTxBps = txBps
+    txBps
+  }
+
+  private def getValueFromCommandLine(commandToRun: String): String = {
+    var retVal:String = null
+    try {
+      val pb = new java.lang.ProcessBuilder("/bin/sh", "-c", commandToRun)
+      val p = pb.start()
+      val stdInput = new BufferedReader(new InputStreamReader(p.getInputStream()))
+      retVal = stdInput.readLine()
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+    }
+    retVal
+  }
+
+  /**
+   * Start a thread that will periodically inform BlockManagerMaster of the 
+   * network rxBps and txBps in this node
+   */
+  private def startNetworkUpdater() {
+    val t = new Thread {
+      override def run() {
+        while (true) {
+          Thread.sleep(1000)
+          master.syncUpdateNetworkLoad(UpdateNetworkLoad(blockManagerId, getRxBps(), getTxBps()))
+        }
+      }
+    }
+    t.setDaemon(true)
+    t.start()
   }
 
   /**

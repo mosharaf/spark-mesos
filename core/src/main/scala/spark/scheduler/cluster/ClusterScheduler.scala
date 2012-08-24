@@ -113,6 +113,7 @@ class ClusterScheduler(sc: SparkContext)
       return offers
 
     // Group by hostname and sort descending by curTxBps
+    // TODO: Do we need descending or ascending? Or is it task dependent?
     val grouped = offers.groupBy(_.hostname).map(_._2).toList.sortWith(_(0).curTxBps > _(0).curTxBps)
     // Find the length of the largest group
     var maxGroupLen = grouped.maxBy(_.size).size
