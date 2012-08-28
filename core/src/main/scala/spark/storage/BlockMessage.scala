@@ -11,16 +11,19 @@ import spark.network._
 case class GetBlock(id: String)
 case class GotBlock(id: String, data: ByteBuffer)
 case class PutBlock(id: String, data: ByteBuffer, level: StorageLevel) 
+case class ReplicateBlock(id: String, data: ByteBuffer, level: StorageLevel, peers: Seq[BlockManagerId])
 
 class BlockMessage() extends Logging{
   // Un-initialized: typ = 0
   // GetBlock: typ = 1
   // GotBlock: typ = 2
   // PutBlock: typ = 3
+  // ReplicateBlock: typ = 4
   private var typ: Int = BlockMessage.TYPE_NON_INITIALIZED
   private var id: String = null
   private var data: ByteBuffer = null
   private var level: StorageLevel = null
+  private var peers: Seq[BlockManagerId] = null
  
   initLogging()
 
@@ -40,6 +43,14 @@ class BlockMessage() extends Logging{
     id = putBlock.id
     data = putBlock.data
     level = putBlock.level
+  }
+
+  def set(replicateBlock: ReplicateBlock) {
+    typ = BlockMessage.TYPE_REPLICATE_BLOCK
+    id = replicateBlock.id
+    data = replicateBlock.data
+    level = replicateBlock.level
+    peers = replicateBlock.peers
   }
 
   def set(buffer: ByteBuffer) {
@@ -117,6 +128,10 @@ class BlockMessage() extends Logging{
   def getLevel: StorageLevel = {
     return level
   }
+
+  def getPeers: Seq[BlockManagerId] = {
+    return peers
+  }
   
   def toBufferMessage: BufferMessage = {
     val startTime = System.currentTimeMillis
@@ -166,7 +181,8 @@ class BlockMessage() extends Logging{
 
   override def toString: String = {
     "BlockMessage [type = " + typ + ", id = " + id + ", level = " + level + 
-    ", data = " + (if (data != null) data.remaining.toString  else "null") + "]"
+    ", data = " + (if (data != null) data.remaining.toString  else "null") +
+    ", peers = " + (if (peers != null) peers  else "null") + "]"
   }
 }
 
@@ -175,6 +191,7 @@ object BlockMessage {
   val TYPE_GET_BLOCK: Int = 1
   val TYPE_GOT_BLOCK: Int = 2
   val TYPE_PUT_BLOCK: Int = 3
+  val TYPE_REPLICATE_BLOCK: Int = 4
  
   def fromBufferMessage(bufferMessage: BufferMessage): BlockMessage = {
     val newBlockMessage = new BlockMessage()
@@ -203,6 +220,12 @@ object BlockMessage {
   def fromPutBlock(putBlock: PutBlock): BlockMessage = {
     val newBlockMessage = new BlockMessage()
     newBlockMessage.set(putBlock)
+    newBlockMessage
+  }
+
+  def fromReplicateBlock(replicateBlock: ReplicateBlock): BlockMessage = {
+    val newBlockMessage = new BlockMessage()
+    newBlockMessage.set(replicateBlock)
     newBlockMessage
   }
 

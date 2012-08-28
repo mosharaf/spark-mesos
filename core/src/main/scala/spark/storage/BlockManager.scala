@@ -574,19 +574,16 @@ class BlockManager(val master: BlockManagerMaster, val serializer: Serializer, m
   private def replicate(blockId: String, data: ByteBuffer, level: StorageLevel) {
     val tLevel: StorageLevel =
       new StorageLevel(level.useDisk, level.useMemory, level.deserialized, 1)
-    var peers = master.mustGetPeers(GetPeers(blockManagerId, level.replication - 1))
-    for (peer: BlockManagerId <- peers) {
-      val start = System.nanoTime
-      logDebug("Try to replicate BlockId " + blockId + " once; The size of the data is "
-        + data.array().length + " Bytes. To node: " + peer)
-      if (!BlockManagerWorker.syncPutBlock(PutBlock(blockId, data, tLevel),
-        new ConnectionManagerId(peer.ip, peer.port))) {
-        logError("Failed to call syncPutBlock to " + peer)
-      }
-      logDebug("Replicated BlockId " + blockId + " once used " +
-        (System.nanoTime - start) / 1e6 + " s; The size of the data is " +
-        data.array().length + " bytes.")
+    val peers = master.mustGetPeers(GetPeers(blockManagerId, level.replication - 1))
+    val start = System.nanoTime
+    logDebug("Try to replicate BlockId " + blockId + " once; The size of the data is "
+      + data.array().length + " Bytes. To nodes: " + peers)
+    if (!BlockManagerWorker.syncReplicateBlock(ReplicateBlock(blockId, data, tLevel, peers))) {
+      logError("Failed to call syncReplicateBlock to " + peers)
     }
+    logDebug("Replicated BlockId " + blockId + " once used " +
+      (System.nanoTime - start) / 1e6 + " s; The size of the data is " +
+      data.array().length + " bytes.")
   }
 
   // TODO: This code will be removed when CacheTracker is gone.

@@ -49,6 +49,15 @@ class BlockManagerWorker(val blockManager: BlockManager) extends Logging {
 
   def processBlockMessage(blockMessage: BlockMessage): Option[BlockMessage] = {
     blockMessage.getType match {
+      case BlockMessage.TYPE_REPLICATE_BLOCK => {
+        val rB = ReplicateBlock(blockMessage.getId, blockMessage.getData, blockMessage.getLevel, blockMessage.getPeers)
+        logInfo("Received [" + rB + "]")
+        putBlock(blockMessage.getId, blockMessage.getData, blockMessage.getLevel)
+        if (!BlockManagerWorker.syncReplicateBlock(rB)) {
+          logError("Failed to call syncReplicateBlock to " + rB.peers)
+        }
+        return None
+      }
       case BlockMessage.TYPE_PUT_BLOCK => {
         val pB = PutBlock(blockMessage.getId, blockMessage.getData, blockMessage.getLevel)
         logInfo("Received [" + pB + "]")
@@ -105,6 +114,23 @@ object BlockManagerWorker extends Logging {
   
   def startBlockManagerWorker(manager: BlockManager) {
     blockManagerWorker = new BlockManagerWorker(manager)
+  }
+
+  def syncReplicateBlock(msg: ReplicateBlock): Boolean = {
+    if (msg.peers.length == 0)
+      return true
+
+    val blockManager = blockManagerWorker.blockManager
+    val connectionManager = blockManager.connectionManager
+    val serializer = blockManager.serializer
+    val next = msg.peers.head
+    val toConnManagerId = new ConnectionManagerId(next.ip, next.port)
+    val newPeers = msg.peers.takeRight(msg.peers.length - 1)
+    val blockMessage = BlockMessage.fromReplicateBlock(ReplicateBlock(msg.id, msg.data, msg.level, newPeers))
+    val blockMessageArray = new BlockMessageArray(blockMessage)
+    val resultMessage = connectionManager.sendMessageReliablySync(
+        toConnManagerId, blockMessageArray.toBufferMessage)
+    return (resultMessage != None)
   }
   
   def syncPutBlock(msg: PutBlock, toConnManagerId: ConnectionManagerId): Boolean = {
