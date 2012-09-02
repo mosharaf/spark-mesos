@@ -2,7 +2,6 @@ package spark.examples
 
 import spark.SparkContext
 import spark.SparkContext._
-import java.util.Random
 
 object WriteRDDsToHdfs {
   def main(args: Array[String]) {
@@ -19,7 +18,6 @@ object WriteRDDsToHdfs {
     val sc = new SparkContext(args(0), "WriteRDDsToHdfs", System.getenv("SPARK_HOME"), List(System.getenv("SPARK_EXAMPLES_JAR")))
     
     val rdd1 = sc.parallelize(0 until numMappers, numMappers).flatMap { p =>
-      val ranGen = new Random
       val byteArr = new Array[Byte](bytesPerMapper)
       byteArr
     }.cache
