@@ -22,7 +22,7 @@ object HdfsWrite {
     val bytesPerMapper = mbPerMapper * (1024 * 1024)
     val numRep = if (args.length > 4) args(4).toInt else 2
 
-    val sc = new SparkContext(args(0), "HdfsWrite", System.getenv("SPARK_HOME"), List(System.getenv("SPARK_EXAMPLES_JAR")))
+    val sc = new SparkContext(args(0), "HdfsWrite")
 
     sc.parallelize(0 until numMappers, numMappers).foreach { id =>
       val arr = new StringBuilder(bytesPerMapper)
