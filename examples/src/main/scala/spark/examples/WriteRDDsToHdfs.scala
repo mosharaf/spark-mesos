@@ -18,7 +18,8 @@ object WriteRDDsToHdfs {
     val sc = new SparkContext(args(0), "WriteRDDsToHdfs", System.getenv("SPARK_HOME"), List(System.getenv("SPARK_EXAMPLES_JAR")))
     
     val rdd1 = sc.parallelize(0 until numMappers, numMappers).flatMap { p =>
-      val byteArr = new Array[Byte](bytesPerMapper)
+      val byteArr = new StringBuilder(bytesPerMapper)
+      (0 until bytesPerMapper).foreach { _ => byteArr.append(' ')}
       byteArr
     }.cache
     // Enforce that everything has been calculated and in cache
