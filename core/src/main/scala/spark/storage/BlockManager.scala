@@ -68,10 +68,10 @@ class BlockManager(val master: BlockManagerMaster, val serializer: Serializer, m
     
   val BANDWIDTH_INTERVAL = System.getProperty("spark.bandwidth.interval", "100").toLong
 
-  val commandToGetRxBytes = System.getProperty("spark.command.getRxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $7}'")
-  // val commandToGetRxBytes = System.getProperty("spark.command.getRxBytes", "ifconfig eth0 | grep \"RX bytes\" | cut -d: -f2 | awk '{ print $1 }'")
-  val commandToGetTxBytes = System.getProperty("spark.command.getTxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $10}'")
-  // val commandToGetTxBytes = System.getProperty("spark.command.getTxBytes", "ifconfig eth0 | grep \"TX bytes\" | cut -d: -f3 | awk '{ print $1 }'")
+  // val commandToGetRxBytes = System.getProperty("spark.command.getRxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $7}'")
+  val commandToGetRxBytes = System.getProperty("spark.command.getRxBytes", "ifconfig eth0 | grep \"RX bytes\" | cut -d: -f2 | awk '{ print $1 }'")
+  // val commandToGetTxBytes = System.getProperty("spark.command.getTxBytes", "netstat -ib | grep mosharaf-mb | awk '{print $10}'")
+  val commandToGetTxBytes = System.getProperty("spark.command.getTxBytes", "ifconfig eth0 | grep \"TX bytes\" | cut -d: -f3 | awk '{ print $1 }'")
 
   var lastRxBps = -1.0
   var lastRxBytes = getValueFromCommandLine(commandToGetRxBytes).toDouble
