@@ -12,14 +12,14 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 object HdfsWrite {
   def main(args: Array[String]) {
     if (args.length < 2) {
-      System.err.println("Usage: HdfsWrite <host> <pathToOutputDir> [numMappers] [MBPerMapper] [numReplicas]")
+      System.err.println("Usage: HdfsWrite <host> <pathToOutputDir> [numMappers = 2] [MBPerMapper = 1] [numReplicas = 2]")
       System.exit(1)
     }
 
     val pathToOutputDir = args(1)
     val numMappers = if (args.length > 2) args(2).toInt else 2
-    val mbPerMapper = if (args.length > 3) args(3).toInt else 1
-    val bytesPerMapper = mbPerMapper * (1024L * 1024L)
+    val mbPerMapper = if (args.length > 3) args(3).toDouble else 1.0
+    val bytesPerMapper = (mbPerMapper * 1024.0 * 1024.0).toInt
     val numRep = if (args.length > 4) args(4).toInt else 2
 
     val sc = new SparkContext(args(0), "HdfsWrite")
