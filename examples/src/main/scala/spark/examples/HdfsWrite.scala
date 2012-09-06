@@ -7,7 +7,7 @@ import java.io.{OutputStream, ObjectOutputStream}
 import java.net.URI
 
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.{FileSystem, Path, RawLocalFileSystem}
+import org.apache.hadoop.fs.{FileSystem, Path}
 
 object HdfsWrite {
   def main(args: Array[String]) {
@@ -19,7 +19,7 @@ object HdfsWrite {
     val pathToOutputDir = args(1)
     val numMappers = if (args.length > 2) args(2).toInt else 2
     val mbPerMapper = if (args.length > 3) args(3).toInt else 1
-    val bytesPerMapper = mbPerMapper * (1024 * 1024)
+    val bytesPerMapper = mbPerMapper * (1024L * 1024L)
     val numRep = if (args.length > 4) args(4).toInt else 2
 
     val sc = new SparkContext(args(0), "HdfsWrite")
@@ -28,7 +28,7 @@ object HdfsWrite {
       val arr = new StringBuilder(bytesPerMapper)
       (0 until bytesPerMapper).foreach { _ => arr.append(' ')}
       val out = new ObjectOutputStream(openFileForWriting(getDfsAddress(pathToOutputDir), pathToOutputDir + "/" + id, numRep))
-      out.writeObject (arr)
+      out.writeObject(arr)
       out.close
     }
 
