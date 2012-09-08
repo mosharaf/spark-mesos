@@ -19,16 +19,25 @@ object HdfsWrite {
     val pathToOutputDir = args(1)
     val numMappers = if (args.length > 2) args(2).toInt else 2
     val mbPerMapper = if (args.length > 3) args(3).toDouble else 1.0
-    val bytesPerMapper = (mbPerMapper * 1024.0 * 1024.0).toInt
+    val bytesToWrite = (mbPerMapper * 1024.0 * 1024.0).toLong
     val numRep = if (args.length > 4) args(4).toInt else 2
 
     val sc = new SparkContext(args(0), "HdfsWrite")
 
     sc.parallelize(0 until numMappers, numMappers).foreach { id =>
-      val arr = new StringBuilder(bytesPerMapper)
-      (0 until bytesPerMapper).foreach { _ => arr.append(' ')}
+      val BUFFER_SIZE = 4 * 1024 * 1024
       val out = new ObjectOutputStream(openFileForWriting(getDfsAddress(pathToOutputDir), pathToOutputDir + "/" + id, numRep))
-      out.writeObject(arr)
+      val arr = new StringBuilder(BUFFER_SIZE)
+      var bytesWritten = 0L
+      while (bytesWritten < bytesToWrite) {
+        val btw = Math.min(bytesToWrite - bytesWritten, BUFFER_SIZE).toInt
+        if (btw < BUFFER_SIZE) {
+          arr.clear
+          (0 until btw).foreach { _ => arr.append(' ')}
+        }
+        out.writeObject(arr)
+        bytesWritten += btw
+      }
       out.close
     }
 
